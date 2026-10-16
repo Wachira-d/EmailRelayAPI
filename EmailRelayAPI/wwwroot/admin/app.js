@@ -139,6 +139,11 @@ function confirmDialog(message, { title, okText, danger } = {}) {
 /* ---------- API ---------- */
 async function api(path, { method = 'GET', body, query, raw } = {}) {
   const headers = { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' };
+  // PUT/DELETE are blocked by some IIS/proxy configurations (405): tunnel them through POST.
+  if (method === 'PUT' || method === 'DELETE' || method === 'PATCH') {
+    headers['X-HTTP-Method-Override'] = method;
+    method = 'POST';
+  }
   const init = { method, headers, credentials: 'same-origin' };
   if (body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(body); }
   const res = await fetch(path + qs(query), init);

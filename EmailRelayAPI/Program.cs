@@ -284,6 +284,9 @@ app.UseSwaggerUI(c =>
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// Some IIS/proxy setups reject PUT and DELETE (405); the console sends POST + X-HTTP-Method-Override instead.
+app.UseHttpMethodOverride(new HttpMethodOverrideOptions { FormFieldName = "_method" });
+
 app.UseRouting();
 
 app.UseIpFilter();
