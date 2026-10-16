@@ -62,7 +62,7 @@ dotnet run -- hash-password "StrongPassword!"
 1. ติดตั้ง **ASP.NET Core Hosting Bundle 8**
 2. สร้าง Application Pool (.NET CLR = *No Managed Code*, Identity = service account เฉพาะ) และ Website/Application ชี้ไปที่โฟลเดอร์ publish
 3. ให้สิทธิ์ *Modify* แก่ identity ของ app pool บนโฟลเดอร์ `data/` และ `logs/` (ภายในโฟลเดอร์ publish หรือกำหนด path เต็มใน config)
-4. ตั้งค่า `web.config` (สร้างให้อัตโนมัติตอน publish) — ถ้าต้องการให้ตั้ง `ASPNETCORE_ENVIRONMENT=Production` ใน `<environmentVariables>`
+4. `web.config` อยู่ในโปรเจกต์แล้ว (publish จะคัดลอกไปด้วย) — ตั้ง `ASPNETCORE_ENVIRONMENT=Production` และ **ปิดโมดูล WebDAV** ไว้แล้ว เพราะ WebDAV ของ IIS จะดัก `PUT`/`DELETE` แล้วตอบ `405 Method Not Allowed` ทำให้ปุ่ม Save/Delete ใน console ใช้ไม่ได้ (ถ้ายังพบ 405 ให้ปิด WebDAV Publishing ใน Windows Features → IIS → World Wide Web Services → Common HTTP Features)
 5. Binding HTTPS ด้วยใบรับรององค์กร; ถ้ามี reverse proxy หน้า IIS ให้ตั้ง `Security:KnownProxies`
 6. **Preload/Always running**: ตั้ง app pool `Start Mode = AlwaysRunning`, `Idle Time-out = 0` และเปิด *Application Initialization* เพื่อให้ dispatcher ทำงานตลอด (คิวส่งทำงานใน process ของเว็บ)
 7. เปิด `https://host/admin/` login ด้วยบัญชี AD แล้วสร้าง sender profile/client
