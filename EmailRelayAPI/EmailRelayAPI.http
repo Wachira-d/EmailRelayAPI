@@ -1,0 +1,45 @@
+@host = http://localhost:5258
+@apiKey = erk_REPLACE_ME
+
+### Health
+GET {{host}}/health
+
+### Who am I
+GET {{host}}/api/v1/me
+X-API-Key: {{apiKey}}
+
+### Send an email
+POST {{host}}/api/v1/emails
+X-API-Key: {{apiKey}}
+Content-Type: application/json
+
+{
+  "to": [ "someone@example.com" ],
+  "subject": "Hello from EmailRelayAPI",
+  "html": "<p>Hi there</p>",
+  "text": "Hi there",
+  "idempotencyKey": "demo-1"
+}
+
+### Get status
+GET {{host}}/api/v1/emails/00000000-0000-0000-0000-000000000000
+X-API-Key: {{apiKey}}
+
+### List failed
+GET {{host}}/api/v1/emails?status=failed&pageSize=20
+X-API-Key: {{apiKey}}
+
+### Rotate my key
+POST {{host}}/api/v1/me/keys/rotate
+X-API-Key: {{apiKey}}
+
+### Admin login (cookie)
+POST {{host}}/api/admin/auth/login
+Content-Type: application/json
+X-Requested-With: XMLHttpRequest
+
+{ "username": "admin", "password": "Admin@123" }
+
+### Dashboard (cookie or admin-scoped key)
+GET {{host}}/api/admin/dashboard
+X-Requested-With: XMLHttpRequest
