@@ -63,6 +63,7 @@ public class AdminSecurityController : AdminControllerBase
     }
 
     [HttpDelete("blocks/{id:int}")]
+    [HttpPost("blocks/{id:int}/delete")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Unblock(int id, CancellationToken ct)
     {

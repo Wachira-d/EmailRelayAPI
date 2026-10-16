@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<ClientSeenIp> ClientSeenIps => Set<ClientSeenIp>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<EmailTemplate> Templates => Set<EmailTemplate>();
+    public DbSet<SystemLog> SystemLogs => Set<SystemLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -117,6 +118,12 @@ public class AppDbContext : DbContext
         b.Entity<EmailTemplate>(e =>
         {
             e.HasIndex(x => new { x.ClientId, x.Name });
+        });
+
+        b.Entity<SystemLog>(e =>
+        {
+            e.HasIndex(x => x.Timestamp);
+            e.HasIndex(x => new { x.Level, x.Timestamp });
         });
     }
 }

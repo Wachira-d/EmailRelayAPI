@@ -1,6 +1,7 @@
 using EmailRelayAPI.Data;
 using EmailRelayAPI.Data.Entities;
 using EmailRelayAPI.Models;
+using EmailRelayAPI.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,8 +12,58 @@ namespace EmailRelayAPI.Controllers.Admin;
 public class AdminLogsController : AdminControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly SystemLogSink _systemLogs;
 
-    public AdminLogsController(AppDbContext db) => _db = db;
+    public AdminLogsController(AppDbContext db, SystemLogSink systemLogs)
+    {
+        _db = db;
+        _systemLogs = systemLogs;
+    }
+
+    /// <summary>Application log (warnings, errors, exceptions and relay activity) stored in the database.</summary>
+    [HttpGet("system")]
+    public async Task<IActionResult> SystemLogs([FromQuery] string? level, [FromQuery] string? category, [FromQuery] string? search, [FromQuery] string? traceId,
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    {
+        (page, pageSize) = Paging(page, pageSize);
+        var q = SystemQuery(level, category, search, traceId, from, to);
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(l => l.Timestamp).ThenByDescending(l => l.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return Ok(ApiResponse<PagedResult<SystemLog>>.Ok(new PagedResult<SystemLog> { Items = items, Page = page, PageSize = pageSize, TotalCount = total }));
+    }
+
+    /// <summary>Latest entries from the in-memory buffer (works even when the database is unavailable).</summary>
+    [HttpGet("system/recent")]
+    public IActionResult SystemRecent([FromQuery] int max = 200)
+        => Ok(ApiResponse<List<SystemLog>>.Ok(_systemLogs.Recent(Math.Clamp(max, 1, 500))));
+
+    [HttpGet("system/export")]
+    public async Task<IActionResult> SystemExport([FromQuery] string? level, [FromQuery] string? category, [FromQuery] string? search, [FromQuery] string? traceId,
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, CancellationToken ct = default)
+    {
+        var items = await SystemQuery(level, category, search, traceId, from, to).OrderByDescending(l => l.Timestamp).Take(100_000).ToListAsync(ct);
+        return Csv($"systemlog-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv",
+            new[] { "Timestamp", "Level", "Category", "Message", "Exception", "Method", "Path", "TraceId" },
+            items.Select(l => new object?[] { l.Timestamp, l.Level, l.Category, l.Message, l.Exception, l.HttpMethod, l.RequestPath, l.TraceId }));
+    }
+
+    private IQueryable<SystemLog> SystemQuery(string? level, string? category, string? search, string? traceId, DateTime? from, DateTime? to)
+    {
+        var q = _db.SystemLogs.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(level))
+        {
+            var levels = level.Equals("Warning", StringComparison.OrdinalIgnoreCase) ? new[] { "Warning", "Error", "Critical" }
+                       : level.Equals("Error", StringComparison.OrdinalIgnoreCase) ? new[] { "Error", "Critical" }
+                       : new[] { level };
+            q = q.Where(l => levels.Contains(l.Level));
+        }
+        if (!string.IsNullOrWhiteSpace(category)) q = q.Where(l => l.Category.Contains(category));
+        if (!string.IsNullOrWhiteSpace(traceId)) q = q.Where(l => l.TraceId == traceId);
+        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(l => l.Message.Contains(search) || (l.Exception != null && l.Exception.Contains(search)) || (l.RequestPath != null && l.RequestPath.Contains(search)));
+        if (from.HasValue) q = q.Where(l => l.Timestamp >= from.Value.ToUniversalTime());
+        if (to.HasValue) q = q.Where(l => l.Timestamp < to.Value.ToUniversalTime());
+        return q;
+    }
 
     [HttpGet("audit")]
     public async Task<IActionResult> Audit([FromQuery] string? category, [FromQuery] string? severity, [FromQuery] string? action, [FromQuery] string? username,

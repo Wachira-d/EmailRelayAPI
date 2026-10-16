@@ -132,6 +132,7 @@ public class AdminMessagesController : AdminControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [HttpPost("{id:guid}/delete")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

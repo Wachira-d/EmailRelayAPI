@@ -90,15 +90,17 @@ public class AuditService : IAuditService
 public class LogWriterService : BackgroundService
 {
     private readonly AuditService _audit;
+    private readonly SystemLogSink _systemLogs;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IApiKeyService _apiKeys;
     private readonly AuditOptions _options;
     private readonly ILogger<LogWriterService> _logger;
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    public LogWriterService(AuditService audit, IServiceScopeFactory scopeFactory, IApiKeyService apiKeys, IOptions<AuditOptions> options, ILogger<LogWriterService> logger)
+    public LogWriterService(AuditService audit, SystemLogSink systemLogs, IServiceScopeFactory scopeFactory, IApiKeyService apiKeys, IOptions<AuditOptions> options, ILogger<LogWriterService> logger)
     {
         _audit = audit;
+        _systemLogs = systemLogs;
         _scopeFactory = scopeFactory;
         _apiKeys = apiKeys;
         _options = options.Value;
@@ -114,18 +116,20 @@ public class LogWriterService : BackgroundService
         {
             try
             {
-                // Wait for at least one item, then gather for up to ~1 second.
-                if (!await reader.WaitToReadAsync(stoppingToken)) break;
+                // Gather audit/request entries and system log entries for up to ~1 second.
                 var deadline = DateTime.UtcNow.AddSeconds(1);
                 while (batch.Count < 500)
                 {
-                    if (reader.TryRead(out var item))
-                    {
-                        batch.Add(item);
-                        continue;
-                    }
+                    var got = false;
+                    if (reader.TryRead(out var item)) { batch.Add(item); got = true; }
+                    if (_systemLogs.Reader.TryRead(out var sys)) { batch.Add(sys); got = true; }
+                    if (got) continue;
                     if (DateTime.UtcNow >= deadline) break;
                     if (!await WaitShortAsync(reader, stoppingToken)) break;
+                }
+                if (batch.Count == 0)
+                {
+                    await Task.Delay(500, stoppingToken);
                 }
 
                 if (batch.Count > 0)
@@ -152,6 +156,7 @@ public class LogWriterService : BackgroundService
         try
         {
             while (reader.TryRead(out var item)) batch.Add(item);
+            while (_systemLogs.Reader.TryRead(out var sys)) batch.Add(sys);
             if (batch.Count > 0) await FlushAsync(batch, CancellationToken.None);
             await _apiKeys.FlushUsageAsync(CancellationToken.None);
         }
@@ -182,6 +187,7 @@ public class LogWriterService : BackgroundService
 
         var audits = batch.OfType<AuditLog>().ToList();
         var requests = batch.OfType<RequestLog>().ToList();
+        var system = batch.OfType<SystemLog>().ToList();
         var touches = batch.OfType<AuditService.SeenIpTouch>()
             .GroupBy(t => (t.ClientId, t.Ip))
             .Select(g => (g.Key.ClientId, g.Key.Ip, Count: g.Count()))
@@ -189,6 +195,7 @@ public class LogWriterService : BackgroundService
 
         if (audits.Count > 0) db.AuditLogs.AddRange(audits);
         if (requests.Count > 0) db.RequestLogs.AddRange(requests);
+        if (system.Count > 0) db.SystemLogs.AddRange(system);
 
         foreach (var t in touches)
         {

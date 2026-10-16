@@ -78,6 +78,7 @@ public class AdminClientsController : AdminControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [HttpPost("{id:int}/update")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Update(int id, [FromBody] ClientUpsertRequest request, CancellationToken ct)
     {
@@ -101,6 +102,7 @@ public class AdminClientsController : AdminControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [HttpPost("{id:int}/delete")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {
@@ -221,6 +223,7 @@ public class AdminClientsController : AdminControllerBase
     }
 
     [HttpDelete("{id:int}/signing-secret")]
+    [HttpPost("{id:int}/signing-secret/delete")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> RemoveSigningSecret(int id, CancellationToken ct)
     {

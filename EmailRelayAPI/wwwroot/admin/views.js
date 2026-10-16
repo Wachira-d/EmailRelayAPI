@@ -198,7 +198,7 @@ async function renderMessageDetail(id, content) {
     const b = $(sel); if (!b) return;
     b.addEventListener('click', async () => {
       if (!(await confirmDialog(confirmMsg, { danger }))) return;
-      try { const r = await api(path, { method: danger ? 'DELETE' : 'POST' }); toast(r.message, 'success'); if (danger) location.hash = '#/messages'; else renderMessageDetail(id, content); }
+      try { const r = danger ? await apiDelete(path) : await apiPost(path); toast(r.message, 'success'); if (danger) location.hash = '#/messages'; else renderMessageDetail(id, content); }
       catch (e) { toast(e.message, 'danger'); }
     });
   };

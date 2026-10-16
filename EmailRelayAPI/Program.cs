@@ -83,6 +83,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(o =>
 // ---------------------------------------------------------------------------
 // Application services
 // ---------------------------------------------------------------------------
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<SystemLogSink>();
+builder.Services.AddSingleton<ILoggerProvider, DbLoggerProvider>();
 builder.Services.AddSingleton<AuditService>();
 builder.Services.AddSingleton<IAuditService>(sp => sp.GetRequiredService<AuditService>());
 builder.Services.AddHostedService<LogWriterService>();
@@ -282,7 +285,17 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // the console must always pick up new builds; vendor libraries may be cached
+        if (ctx.Context.Request.Path.StartsWithSegments("/admin"))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache, must-revalidate";
+        }
+    }
+});
 
 // Some IIS/proxy setups reject PUT and DELETE (405); the console sends POST + X-HTTP-Method-Override instead.
 app.UseHttpMethodOverride(new HttpMethodOverrideOptions { FormFieldName = "_method" });

@@ -80,6 +80,7 @@ public class AdminProfilesController : AdminControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [HttpPost("{id:int}/update")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Update(int id, [FromBody] SenderProfileUpsertRequest request, CancellationToken ct)
     {
@@ -97,6 +98,7 @@ public class AdminProfilesController : AdminControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [HttpPost("{id:int}/delete")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {

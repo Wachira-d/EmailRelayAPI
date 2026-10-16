@@ -77,11 +77,12 @@ function templatePreview(t) {
 Routes.logs = async function (params, query, content) {
   setTitle('Logs', `<button class="btn btn-outline-secondary btn-sm" id="log-export">Export CSV</button>`);
   const clients = await loadClients();
-  const tab = query.tab === 'requests' ? 'requests' : 'audit';
+  const tab = query.tab === 'requests' ? 'requests' : query.tab === 'system' ? 'system' : 'audit';
+  if (tab === 'system') return renderSystemLog(query, content);
   const state = { tab, page: 1, pageSize: 50, category: query.category || '', severity: query.severity || '', action: query.action || '', username: query.username || '', clientId: query.clientId || '', ip: query.ip || '', success: query.success || '', from: query.from || '', to: query.to || '', search: query.search || '', status: '', path: '', errorsOnly: false };
   const categories = ['Authentication', 'ApiKey', 'Security', 'Admin', 'Delivery', 'System', 'Client'];
   content.innerHTML = `
-    <ul class="nav nav-pills tab-nav"><li class="nav-item"><a class="nav-link ${tab === 'audit' ? 'active' : ''}" href="#/logs?tab=audit">Audit trail</a></li><li class="nav-item"><a class="nav-link ${tab === 'requests' ? 'active' : ''}" href="#/logs?tab=requests">API requests</a></li></ul>
+    ${logTabs(tab)}
     <div class="filters" id="log-filters">
       ${tab === 'audit' ? `
       <div><label>Category</label><select class="form-select form-select-sm" name="category"><option value="">All</option>${categories.map(c => `<option ${state.category === c ? 'selected' : ''}>${c}</option>`).join('')}</select></div>
@@ -149,6 +150,74 @@ function requestTable(items) {
       <td class="mono">${esc(r.method)}</td><td class="mono cell-trunc">${esc(r.path)}${r.query ? `<span class="text-muted-sm">${esc(r.query)}</span>` : ''}</td>
       <td class="cell-trunc sm">${esc(r.clientName || r.username || '—')}</td><td class="mono">${esc(r.ipAddress)}</td>
       <td class="text-end nowrap">${ms(r.durationMs)}</td><td class="text-end">${r.requestBytes != null ? bytes(r.requestBytes) : '—'}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function logTabs(tab) {
+  return `<ul class="nav nav-pills tab-nav">
+    <li class="nav-item"><a class="nav-link ${tab === 'audit' ? 'active' : ''}" href="#/logs?tab=audit">Audit trail</a></li>
+    <li class="nav-item"><a class="nav-link ${tab === 'requests' ? 'active' : ''}" href="#/logs?tab=requests">API requests</a></li>
+    <li class="nav-item"><a class="nav-link ${tab === 'system' ? 'active' : ''}" href="#/logs?tab=system">System log</a></li></ul>`;
+}
+
+/* ---- System log: application warnings / errors / exceptions ---- */
+async function renderSystemLog(query, content) {
+  const state = { page: 1, pageSize: 50, level: query.level || 'Warning', category: query.category || '', search: query.search || '', traceId: query.traceId || '', from: query.from || '', to: query.to || '', live: query.live === '1' };
+  content.innerHTML = `
+    ${logTabs('system')}
+    <div class="filters" id="sys-filters">
+      <div><label>Min level</label><select class="form-select form-select-sm" name="level"><option value="">All</option>${['Information', 'Warning', 'Error', 'Critical'].map(l => `<option ${state.level === l ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label>Category contains</label><input class="form-control form-control-sm" name="category" value="${esc(state.category)}" placeholder="EmailDispatcher"></div>
+      <div><label>Trace id</label><input class="form-control form-control-sm" name="traceId" value="${esc(state.traceId)}"></div>
+      <div><label>From</label><input type="date" class="form-control form-control-sm" name="from" value="${esc(state.from)}"></div>
+      <div><label>To</label><input type="date" class="form-control form-control-sm" name="to" value="${esc(state.to)}"></div>
+      <div style="flex:1;min-width:200px"><label>Search message / exception / path</label><input class="form-control form-control-sm" name="search" value="${esc(state.search)}"></div>
+      <div><label>&nbsp;</label><div class="form-check"><input class="form-check-input" type="checkbox" name="live" id="f-live" ${state.live ? 'checked' : ''}><label class="form-check-label" for="f-live">Live buffer</label></div></div>
+      <div><button class="btn btn-primary btn-sm" id="sys-apply">Apply</button></div>
+    </div>
+    <div class="help mb-2">Stored levels are controlled by <code>Audit:SystemLogMinimumLevel</code> (default Warning) and <code>Audit:SystemLogIncludeAppInfo</code>. "Live buffer" shows the last 500 entries kept in memory, independent of the database.</div>
+    <div class="card"><div class="table-responsive" id="sys-table"><div class="loading">Loading…</div></div><div class="pager" id="sys-pager"></div></div>`;
+  const filters = $('#sys-filters');
+  const buildQuery = () => { const f = formData(filters); return { level: f.level, category: f.category, traceId: f.traceId, search: f.search, from: f.from, to: f.to ? f.to + 'T23:59:59' : '', page: state.page, pageSize: state.pageSize }; };
+  const load = async () => {
+    const f = formData(filters);
+    let items, page = null;
+    if (f.live) {
+      items = (await apiGet('/api/admin/logs/system/recent', { max: 500 })).data;
+      if (f.level) { const order = ['Trace', 'Debug', 'Information', 'Warning', 'Error', 'Critical']; const min = order.indexOf(f.level); items = items.filter(l => order.indexOf(l.level) >= min); }
+      if (f.search) items = items.filter(l => (l.message || '').includes(f.search) || (l.exception || '').includes(f.search));
+      if (f.category) items = items.filter(l => (l.category || '').includes(f.category));
+    } else {
+      const r = await apiGet('/api/admin/logs/system', buildQuery());
+      page = r.data; items = page.items;
+    }
+    const el = $('#sys-table');
+    if (!items.length) { el.innerHTML = '<div class="empty">No log entries</div>'; $('#sys-pager').innerHTML = ''; return; }
+    el.innerHTML = `<table class="table table-hover table-sm"><thead><tr><th>Time</th><th>Level</th><th>Category</th><th>Message</th><th>Request</th></tr></thead><tbody>
+      ${items.map((l, i) => `<tr class="clickable" data-detail="${i}">
+        <td class="nowrap">${fmtDate(l.timestamp, true)}</td>
+        <td>${levelBadge(l.level)}</td>
+        <td class="cell-trunc sm" title="${esc(l.category)}">${esc((l.category || '').split('.').pop())}</td>
+        <td class="cell-trunc lg" title="${esc(l.message)}">${esc(l.message)}${l.exception ? ' <span class="pill">exception</span>' : ''}</td>
+        <td class="mono text-muted-sm cell-trunc sm">${l.httpMethod ? esc(l.httpMethod + ' ' + (l.requestPath || '')) : ''}</td></tr>`).join('')}</tbody></table>`;
+    $$('tr[data-detail]', el).forEach(tr => tr.addEventListener('click', () => {
+      const l = items[Number(tr.dataset.detail)];
+      modal({ title: `${l.level}: ${l.category}`, size: 'xl', body: `<dl class="kv"><dt>Time</dt><dd>${fmtDate(l.timestamp, true)}</dd><dt>Message</dt><dd>${esc(l.message)}</dd>
+        ${l.httpMethod ? `<dt>Request</dt><dd class="mono">${esc(l.httpMethod)} ${esc(l.requestPath || '')}</dd>` : ''}${l.traceId ? `<dt>Trace id</dt><dd class="mono">${esc(l.traceId)} <a href="#/logs?tab=requests" class="text-muted-sm">requests</a></dd>` : ''}</dl>
+        ${l.exception ? `<pre class="code mt-2">${esc(l.exception)}</pre>` : ''}` });
+    }));
+    if (page) renderPager($('#sys-pager'), page, p => { state.page = p; load(); }); else $('#sys-pager').innerHTML = `<span>${items.length} entries (memory buffer)</span>`;
+  };
+  $('#sys-apply').addEventListener('click', () => { state.page = 1; load(); });
+  $('#log-export').addEventListener('click', () => { const q = buildQuery(); delete q.page; delete q.pageSize; downloadUrl('/api/admin/logs/system/export', q); });
+  $$('select, input[type=checkbox]', filters).forEach(s => s.addEventListener('change', () => { state.page = 1; load(); }));
+  $$('input', filters).forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') { state.page = 1; load(); } }));
+  await load();
+  autoRefresh(load, 15);
+}
+function levelBadge(level) {
+  const l = String(level || '');
+  const cls = l === 'Critical' || l === 'Error' ? 'failed' : l === 'Warning' ? 'warning' : 'neutral';
+  return `<span class="badge-status ${cls}">${esc(l)}</span>`;
 }
 
 /* ======================= SECURITY ======================= */

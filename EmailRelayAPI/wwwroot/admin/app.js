@@ -139,11 +139,6 @@ function confirmDialog(message, { title, okText, danger } = {}) {
 /* ---------- API ---------- */
 async function api(path, { method = 'GET', body, query, raw } = {}) {
   const headers = { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' };
-  // PUT/DELETE are blocked by some IIS/proxy configurations (405): tunnel them through POST.
-  if (method === 'PUT' || method === 'DELETE' || method === 'PATCH') {
-    headers['X-HTTP-Method-Override'] = method;
-    method = 'POST';
-  }
   const init = { method, headers, credentials: 'same-origin' };
   if (body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(body); }
   const res = await fetch(path + qs(query), init);
@@ -164,8 +159,10 @@ async function api(path, { method = 'GET', body, query, raw } = {}) {
 }
 const apiGet = (p, query) => api(p, { query });
 const apiPost = (p, body, query) => api(p, { method: 'POST', body, query });
-const apiPut = (p, body) => api(p, { method: 'PUT', body });
-const apiDelete = p => api(p, { method: 'DELETE' });
+// PUT/DELETE are rejected (405) by some IIS / proxy / WAF setups, so the console uses the
+// POST alias routes every admin endpoint exposes: <resource>/update and <resource>/delete.
+const apiPut = (p, body) => api(p + '/update', { method: 'POST', body: body === undefined ? {} : body });
+const apiDelete = p => api(p + '/delete', { method: 'POST' });
 
 function downloadUrl(path, query) {
   const a = document.createElement('a');

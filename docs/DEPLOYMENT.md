@@ -27,8 +27,8 @@ dotnet publish -c Release -o ../publish
 | `ApiKeys` | `KeyPrefix`, `RotationCheckIntervalMinutes` | นโยบาย rotation เป็นค่าต่อ client |
 | `Anomaly` | thresholds, `AutoBlock`, `BlockDurationMinutes`, `RejectDuplicates` | ดู SECURITY.md |
 | `Delivery` | `WorkerCount`, `MaxAttempts`, `RetryBaseDelaySeconds`, `RetryMaxDelaySeconds`, `PollIntervalSeconds`, `AttachmentStoragePath`, `MaxAttachmentBytes`, `MaxRecipientsPerMessage`, `MaxBatchSize`, `BlockedAttachmentExtensions`, `ProfileUnhealthyThreshold` | พฤติกรรมคิวส่ง |
-| `Retention` | `MessageRetentionDays` (90), `AuditRetentionDays` (365), `RequestLogRetentionDays` (30), `PurgeTime` | purge อัตโนมัติ (เวลาเครื่อง) |
-| `Audit` | `EnableFileLogging`, `LogDirectory`, `EnableRequestLogging` | ไฟล์ `logs/audit-yyyyMMdd.jsonl` |
+| `Retention` | `MessageRetentionDays` (90), `AuditRetentionDays` (365), `RequestLogRetentionDays` (30), `SystemLogRetentionDays` (30), `PurgeTime` | purge อัตโนมัติ (เวลาเครื่อง) |
+| `Audit` | `EnableFileLogging`, `LogDirectory`, `EnableRequestLogging`, `SystemLogMinimumLevel` (Warning), `SystemLogIncludeAppInfo` | ไฟล์ `logs/audit-yyyyMMdd.jsonl`; system log ของแอปเก็บลงตาราง `SystemLogs` ดูได้ที่ Logs → System log |
 | `Alerts` | `Enabled`, `AdminEmails[]`, `SenderProfileName`, `WebhookUrl`, `ThrottleMinutes` | ใช้ sender profile ที่มีอยู่ส่งอีเมลแจ้งเตือน |
 | `AuthenApi` | `BaseUrl` (เช่น `https://authen.company.local/api`), `ApiKey`, `CacheDurationDays`, `AllowOfflineLogin`, `AdminGroups[]`, `ViewerGroups[]`, `MaxFailedAttempts`, `LockoutMinutes`, `SessionTimeoutMinutes`, `LocalAdmin` | login console |
 | `Logging` | ระดับ log ของ .NET | |

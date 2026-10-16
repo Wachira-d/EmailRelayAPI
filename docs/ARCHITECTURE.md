@@ -56,6 +56,7 @@
 | `ClientSeenIps` | IP ต้นทางที่แต่ละ client เคยใช้ | ใช้ตรวจ "IP ใหม่" และเป็นรายงานตรวจสอบผู้เรียก |
 | `AdminUsers` | cache ผู้ดูแลจาก AuthenAPI | PBKDF2 hash + salt, groups, role, cache expiry, lockout |
 | `Templates` | template ข้อความ | global หรือเฉพาะ client, `{{var}}` (HTML-encoded) / `{{{var}}}` (raw) |
+| `SystemLogs` | log ของแอปเอง (ILogger) | Warning ขึ้นไป + Information ของโค้ด relay (ตั้งค่า `Audit:SystemLogMinimumLevel`), มี exception/trace id/path; ดูได้ที่ Logs → System log (+ live buffer 500 รายการในหน่วยความจำ) |
 
 Schema ถูกสร้างด้วย `EnsureCreated()` ตอน start (เหมาะกับ deploy ครั้งแรก). เมื่อมีการเปลี่ยน schema ในอนาคตให้เปลี่ยนไปใช้ EF migrations (`dotnet ef migrations add ...`) แล้วแทน `EnsureCreatedAsync` ด้วย `MigrateAsync` ใน `Data/DbInitializer.cs`
 
@@ -126,7 +127,8 @@ username/password → AdminUsers cache?
 
 - **Dashboard**: KPI วันนี้/7 วัน, success rate, latency, queue depth, security events, blocks, keys due rotation; กราฟรายชั่วโมง (24h) และรายวัน (30d); top clients; profile health; เหตุการณ์ความปลอดภัยและ failure ล่าสุด (auto refresh 30s)
 - **Messages**: ค้นหา/กรองทุกมิติ, รายละเอียด + timeline + preview HTML (sandboxed iframe) + ไฟล์แนบ, requeue/cancel/delete, export CSV
-- **Logs**: Audit trail (category/severity/action/user/IP/ช่วงเวลา/ค้นหา) และ Request log (status/path/client/IP), export CSV, ไฟล์ `logs/audit-yyyyMMdd.jsonl`
+- **Logs**: Audit trail (category/severity/action/user/IP/ช่วงเวลา/ค้นหา), Request log (status/path/client/IP) และ **System log** (warning/error/exception ของแอป พร้อม stack trace และ trace id เชื่อมกับ request log), export CSV, ไฟล์ `logs/audit-yyyyMMdd.jsonl`
+- Admin API ทุก endpoint ที่เป็น `PUT`/`DELETE` มี alias แบบ `POST .../update` และ `POST .../delete` ซึ่ง console ใช้เป็นหลัก เพราะ IIS/proxy/WAF บางแห่งตอบ 405 ให้ verb เหล่านั้น
 - **Security**: block list (+history), IP ต้นทางต่อ client, key health (หมดอายุ/ครบกำหนด rotate/ไม่ได้ใช้นาน), สถานะ AuthenAPI, console users
 - **Reports**: ช่วงเวลา/ต่อ client → by day/by client/by profile/by status/top errors, export CSV
 - `/health`, `/health/ready` (ตรวจ DB + queue) สำหรับ monitoring ภายนอก

@@ -57,6 +57,7 @@ public class AdminTemplatesController : AdminControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [HttpPost("{id:int}/update")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Update(int id, [FromBody] TemplateUpsertRequest request, CancellationToken ct)
     {
@@ -72,6 +73,7 @@ public class AdminTemplatesController : AdminControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [HttpPost("{id:int}/delete")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
     {

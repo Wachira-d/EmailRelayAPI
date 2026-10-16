@@ -15,14 +15,16 @@ public class RequestLoggingMiddleware
     private readonly IAnomalyDetector _anomaly;
     private readonly IOptionsMonitor<AuditOptions> _audit_options;
     private readonly IOptionsMonitor<SecurityOptions> _security;
+    private readonly ILogger<RequestLoggingMiddleware> _logger;
 
-    public RequestLoggingMiddleware(RequestDelegate next, IAuditService audit, IAnomalyDetector anomaly, IOptionsMonitor<AuditOptions> auditOptions, IOptionsMonitor<SecurityOptions> security)
+    public RequestLoggingMiddleware(ILogger<RequestLoggingMiddleware> logger, RequestDelegate next, IAuditService audit, IAnomalyDetector anomaly, IOptionsMonitor<AuditOptions> auditOptions, IOptionsMonitor<SecurityOptions> security)
     {
         _next = next;
         _audit = audit;
         _anomaly = anomaly;
         _audit_options = auditOptions;
         _security = security;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -50,6 +52,12 @@ public class RequestLoggingMiddleware
             sw.Stop();
             var cc = context.GetClientContext();
             var status = error != null && !context.Response.HasStarted ? 500 : context.Response.StatusCode;
+
+            if (status == 405)
+            {
+                _logger.LogWarning("405 Method Not Allowed for {Method} {Path} (override header: '{Override}'). The method reached the application but no endpoint accepts it.",
+                    context.Request.Method, path, context.Request.Headers["X-HTTP-Method-Override"].ToString());
+            }
 
             if (cc != null && status >= 400 && status < 500 && status != 429)
             {
