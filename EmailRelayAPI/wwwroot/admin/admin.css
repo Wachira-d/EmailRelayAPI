@@ -153,7 +153,9 @@ pre.code { background: #0f172a; color: #e2e8f0; padding: 12px 14px; border-radiu
 .kv dt { color: var(--muted); font-weight: 500; }
 .kv dd { margin: 0; word-break: break-word; }
 .secret-box { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 12px 14px; font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; display: flex; gap: 10px; align-items: center; }
-.secret-box code { color: #a5f3c4; flex: 1; }
+.secret-box code, .secret-box .secret-value { color: #a5f3c4; flex: 1; }
+.secret-box .secret-value { background: transparent; border: 0; outline: 0; font: inherit; min-width: 0; width: 100%; padding: 0; cursor: text; }
+.secret-box .secret-value::selection { background: #2a78d6; color: #fff; }
 .health-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .health-dot.ok { background: var(--good); }
 .health-dot.bad { background: var(--bad); }

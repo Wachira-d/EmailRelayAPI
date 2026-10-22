@@ -324,9 +324,14 @@ function keyStatus(k) {
   return badge('ok', 'active');
 }
 function showSecret(title, secret, note) {
-  modal({ title, size: 'lg', body: `<div class="alert alert-warning py-2">Copy this value now. It is shown only once and cannot be recovered.</div>
-    <div class="secret-box"><code>${esc(secret)}</code><button class="btn btn-sm btn-light" data-copy="${esc(secret)}">Copy</button></div>
+  const m = modal({ title, size: 'lg', body: `<div class="alert alert-warning py-2">Copy this value now. It is shown only once and cannot be recovered.</div>
+    <div class="secret-box"><input class="secret-value" type="text" readonly value="${esc(secret)}" aria-label="Secret value" spellcheck="false"><button type="button" class="btn btn-sm btn-light" data-copy="${esc(secret)}">Copy</button></div>
     ${note ? `<p class="help mt-3">${esc(note)}</p>` : ''}` });
+  // clicking the value selects all of it, so a manual Ctrl+C always works
+  const input = m.el.querySelector('.secret-value');
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('click', () => input.select());
+  return m;
 }
 
 async function clientForm(existing, onSaved) {

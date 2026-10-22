@@ -78,15 +78,40 @@ function qs(obj) {
   return s ? '?' + s : '';
 }
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
-function copyText(text) {
+function copyText(text, sourceEl) {
+  // Intranet sites served over plain HTTP are not a "secure context", so navigator.clipboard is
+  // unavailable there. The fallback textarea must live inside the open modal: Bootstrap's focus trap
+  // pulls focus back into the modal, which would clear a selection made anywhere else.
+  const fallback = () => {
+    const host = (sourceEl && sourceEl.closest('.modal')) || document.body;
+    const active = document.activeElement;
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:2em;height:2em;padding:0;border:0;outline:0;box-shadow:none;background:transparent;opacity:0;';
+    host.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    host.removeChild(ta);
+    if (active && active.focus) active.focus();
+    return ok;
+  };
+  const done = ok => {
+    if (ok) { toast('Copied to clipboard', 'success'); return true; }
+    // Last resort: select the visible value so the user can press Ctrl+C.
+    const box = sourceEl && sourceEl.closest('.secret-box');
+    const input = box && box.querySelector('input');
+    if (input) { input.focus(); input.select(); }
+    toast('The browser blocked automatic copy. The value is selected - press Ctrl+C to copy it.', 'warning');
+    return false;
+  };
   if (navigator.clipboard && window.isSecureContext) {
-    return navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard', 'success'));
+    return navigator.clipboard.writeText(text).then(() => done(true), () => done(fallback()));
   }
-  const ta = document.createElement('textarea');
-  ta.value = text; document.body.appendChild(ta); ta.select();
-  try { document.execCommand('copy'); toast('Copied to clipboard', 'success'); } catch (e) { toast('Copy failed', 'danger'); }
-  document.body.removeChild(ta);
-  return Promise.resolve();
+  return Promise.resolve(done(fallback()));
 }
 
 /* ---------- toasts, modals, confirm ---------- */
@@ -376,7 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('hashchange', route);
   document.addEventListener('click', ev => {
     const copy = ev.target.closest('[data-copy]');
-    if (copy) { ev.preventDefault(); copyText(copy.dataset.copy); }
+    if (copy) { ev.preventDefault(); copyText(copy.dataset.copy, copy); }
   });
   initSession();
 });
