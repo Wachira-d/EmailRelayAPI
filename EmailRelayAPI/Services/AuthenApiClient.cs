@@ -140,31 +140,49 @@ public class AuthenApiClient : IAuthenApiClient
         }
     }
 
-    /// <summary>Maps an HTTP response to an outcome (guide section 4). Public for tests.</summary>
+    /// <summary>
+    /// Maps an HTTP response to an outcome (guide section 4), with the same rules as AuthenAPI's own
+    /// docs/samples/AuthenApiLogin.cs. Public for tests.
+    /// </summary>
     public static AuthenResult Classify(HttpResponseMessage response, string text)
     {
         var status = (int)response.StatusCode;
-        var envelope = TryParseEnvelope(response, text);
-        var isJson = envelope != null;
+        using var json = TryParseObject(text);
+        var root = json?.RootElement;
+        // An AuthenAPI ApiResponse always has "success"; an API key failure is {"error": ..., "reason": ...}.
+        var isApiResponse = root.HasValue && root.Value.TryGetProperty("success", out _);
 
         switch (status)
         {
             case 200:
-                if (envelope is { Success: true, Data: not null })
-                    return new AuthenResult(AuthenOutcome.Success, envelope.Data, "Authentication successful", status);
-                if (isJson)
-                    return new AuthenResult(AuthenOutcome.Indeterminate, null, "200 without success=true", status);
-                return new AuthenResult(AuthenOutcome.Indeterminate, null, "200 that is not AuthenAPI JSON (proxy page or wrong URL?)", status);
+                if (isApiResponse && root!.Value.TryGetProperty("success", out var ok) && ok.ValueKind == JsonValueKind.True
+                    && root.Value.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
+                {
+                    try
+                    {
+                        var user = data.Deserialize<AuthenUserInfo>(JsonOpts);
+                        if (user != null) return new AuthenResult(AuthenOutcome.Success, user, "Authentication successful", status);
+                    }
+                    catch (JsonException ex)
+                    {
+                        return new AuthenResult(AuthenOutcome.Indeterminate, null, "200 with a user payload that could not be read: " + ex.Message, status);
+                    }
+                }
+                return isApiResponse
+                    ? new AuthenResult(AuthenOutcome.Indeterminate, null, "200 without success=true and data", status)
+                    : new AuthenResult(AuthenOutcome.Indeterminate, null, "200 that is not AuthenAPI JSON (proxy page or wrong URL?)", status);
 
             case 400:
-                return new AuthenResult(AuthenOutcome.InvalidCredentials, null, "400 Bad Request (invalid input)", status);
+                return root.HasValue
+                    ? new AuthenResult(AuthenOutcome.InvalidCredentials, null, "400 Bad Request (invalid input)", status)
+                    : new AuthenResult(AuthenOutcome.Indeterminate, null, "400 that is not JSON (proxy or IIS?)", status);
 
             case 401:
-                if (!isJson)
-                    return new AuthenResult(AuthenOutcome.ConfigurationError, null, "401 that is not AuthenAPI JSON (IIS authentication or wrong URL)", status);
-                if (!string.IsNullOrWhiteSpace(envelope!.Reason))
-                    return new AuthenResult(AuthenOutcome.ConfigurationError, null, $"API key rejected by AuthenAPI (reason: {envelope.Reason})", status);
-                return new AuthenResult(AuthenOutcome.InvalidCredentials, null, "401 invalid credentials", status);
+                if (root.HasValue && root.Value.TryGetProperty("reason", out var reason))
+                    return new AuthenResult(AuthenOutcome.ConfigurationError, null, $"API key rejected by AuthenAPI (reason: {reason})", status);
+                if (isApiResponse)
+                    return new AuthenResult(AuthenOutcome.InvalidCredentials, null, "401 invalid credentials", status);
+                return new AuthenResult(AuthenOutcome.ConfigurationError, null, "401 that is not AuthenAPI JSON (IIS authentication in front of the app?)", status);
 
             case 403:
                 return new AuthenResult(AuthenOutcome.ConfigurationError, null, "403 Forbidden (IP not whitelisted or API key lacks the authenticate scope)", status);
@@ -172,20 +190,16 @@ public class AuthenApiClient : IAuthenApiClient
             case 429:
                 var retry = response.Headers.RetryAfter?.Delta is TimeSpan d ? (int)Math.Ceiling(d.TotalSeconds)
                           : response.Headers.RetryAfter?.Date is DateTimeOffset at ? Math.Max(1, (int)Math.Ceiling((at - DateTimeOffset.UtcNow).TotalSeconds))
-                          : (int?)null;
+                          : 60;
                 return new AuthenResult(AuthenOutcome.RateLimited, null, "429 Too Many Requests", status, retry);
 
             case 502:
                 return new AuthenResult(AuthenOutcome.Unreachable, null, "502 Bad Gateway (request did not reach AuthenAPI)", status);
 
             case 503:
-                return isJson
+                return isApiResponse
                     ? new AuthenResult(AuthenOutcome.Unreachable, null, "503 from AuthenAPI: Active Directory unavailable", status)
-                    : new AuthenResult(AuthenOutcome.Unreachable, null, "503 from IIS (AuthenAPI application not running)", status);
-
-            case 500:
-            case 504:
-                return new AuthenResult(AuthenOutcome.Indeterminate, null, $"{status} from AuthenAPI (it may already have checked Active Directory)", status);
+                    : new AuthenResult(AuthenOutcome.Unreachable, null, "503 from IIS or a proxy (AuthenAPI application not running)", status);
         }
 
         if (status is >= 300 and < 400)
@@ -193,7 +207,7 @@ public class AuthenApiClient : IAuthenApiClient
         if (status is 404 or 405)
             return new AuthenResult(AuthenOutcome.ConfigurationError, null, $"{status} (wrong URL or IIS configuration)", status);
         if (status >= 500)
-            return new AuthenResult(AuthenOutcome.Indeterminate, null, $"{status} from AuthenAPI", status);
+            return new AuthenResult(AuthenOutcome.Indeterminate, null, $"{status} from AuthenAPI (it may already have checked Active Directory)", status);
         return new AuthenResult(AuthenOutcome.ConfigurationError, null, $"Unexpected HTTP {status}", status);
     }
 
@@ -249,23 +263,15 @@ public class AuthenApiClient : IAuthenApiClient
         }
     }
 
-    private sealed class Envelope
+    private static JsonDocument? TryParseObject(string text)
     {
-        public bool Success { get; set; }
-        public string? Message { get; set; }
-        public AuthenUserInfo? Data { get; set; }
-        public string? Reason { get; set; }
-    }
-
-    private static Envelope? TryParseEnvelope(HttpResponseMessage response, string text)
-    {
-        var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
-        if (!mediaType.Contains("json", StringComparison.OrdinalIgnoreCase)) return null;
+        if (string.IsNullOrWhiteSpace(text)) return null;
         try
         {
-            using var doc = JsonDocument.Parse(text);
-            if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("success", out _)) return null;
-            return doc.RootElement.Deserialize<Envelope>(JsonOpts);
+            var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object) return doc;
+            doc.Dispose();
+            return null;
         }
         catch (JsonException)
         {

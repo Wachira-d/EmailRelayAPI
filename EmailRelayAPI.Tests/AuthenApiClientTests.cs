@@ -52,6 +52,32 @@ public class AuthenApiClientTests
         => Assert.Equal(AuthenOutcome.ConfigurationError, Classify(401, $$"""{"success":false,"message":"API key","reason":"{{reason}}"}""").Outcome);
 
     [Fact]
+    public void ApiKeyFailureAsSentByAuthenApi_IsConfigurationError_WithTheReason()
+    {
+        // AuthenAPI's ApiKeyAuthMiddleware writes {"error": ..., "reason": ...} without "success".
+        var r = Classify(401, """{"error":"Invalid API key","reason":"Invalid"}""");
+        Assert.Equal(AuthenOutcome.ConfigurationError, r.Outcome);
+        Assert.Contains("reason: Invalid", r.Detail);
+    }
+
+    [Fact]
+    public void JsonServedWithAnotherContentType_IsStillRead()
+        => Assert.Equal(AuthenOutcome.Success, Classify(200, OkJson, "text/plain").Outcome);
+
+    [Fact]
+    public void FullAuthenApiUserPayload_IsRead()
+    {
+        const string body = """{"success":true,"message":"ok","data":{"distinguishedName":"CN=x","samAccountName":"Phuriphat.P","userPrincipalName":"Phuriphat.Phiphatthanawaranon@ipsos.com","displayName":"P","firstName":"","lastName":"","email":"","department":"IT","title":"","office":"","phone":"","mobile":"","manager":"","employeeId":"12345","company":"Ipsos","isEnabled":true,"isLocked":false,"groups":["TH-IT"],"groupDistinguishedNames":["CN=TH-IT,OU=G"],"whenCreated":"2020-01-01T00:00:00Z","whenChanged":null,"lastLogon":"2026-11-16T05:43:20Z"},"error":null,"timestamp":"2026-11-16T05:43:20Z"}""";
+        var r = Classify(200, body);
+        Assert.Equal(AuthenOutcome.Success, r.Outcome);
+        Assert.Equal(new[] { "TH-IT" }, r.User!.Groups);
+    }
+
+    [Fact]
+    public void BadRequestThatIsNotJson_IsIndeterminate()
+        => Assert.Equal(AuthenOutcome.Indeterminate, Classify(400, "<html>Bad Request - Invalid Hostname</html>", "text/html").Outcome);
+
+    [Fact]
     public void Unauthorized401Html_IsConfigurationError() => Assert.Equal(AuthenOutcome.ConfigurationError, Classify(401, "<html>401</html>", "text/html").Outcome);
 
     [Fact]

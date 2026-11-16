@@ -110,7 +110,10 @@ public class AuthenApiOptions
         return null;
     }
 
-    /// <summary>Scheme + host + port only. A legacy "/api" suffix (older configuration) is removed.</summary>
+    /// <summary>
+    /// Scheme + host + port only. Older versions of this relay appended "/ldap/authenticate" to a base URL that
+    /// ended in "/api"; that suffix (and any trailing "/") is removed here, so existing settings keep working.
+    /// </summary>
     public string NormalizedBaseUrl
     {
         get
