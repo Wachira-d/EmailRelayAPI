@@ -130,7 +130,7 @@ public class AdminSecurityController : AdminControllerBase
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> DisableUser(string username, CancellationToken ct)
     {
-        if (string.Equals(AdminAuthService.NormalizeUsername(username), AdminAuthService.NormalizeUsername(Actor), StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(username.Trim(), Actor, StringComparison.OrdinalIgnoreCase))
             return BadRequest(ApiResponse.Fail("You cannot disable your own account"));
         return await _adminUsers.SetEnabledAsync(username, false, Actor, ct) ? Ok(ApiResponse.Ok("User disabled")) : NotFound(ApiResponse.Fail("User not found"));
     }
@@ -138,7 +138,7 @@ public class AdminSecurityController : AdminControllerBase
     [HttpPost("users/{username}/clear-cache")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]
     public async Task<IActionResult> ClearUserCache(string username, CancellationToken ct)
-        => await _adminUsers.ClearCacheAsync(username, Actor, ct) ? Ok(ApiResponse.Ok("Credential cache cleared; next login will be verified by AuthenAPI")) : NotFound(ApiResponse.Fail("User not found"));
+        => await _adminUsers.ClearCacheAsync(username, Actor, ct) ? Ok(ApiResponse.Ok("Offline credential removed")) : NotFound(ApiResponse.Fail("User not found"));
 
     [HttpPost("cache/invalidate")]
     [Authorize(Policy = RelayClaims.PolicyAdmin)]

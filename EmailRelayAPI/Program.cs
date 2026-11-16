@@ -7,6 +7,7 @@ using EmailRelayAPI.Options;
 using EmailRelayAPI.Security;
 using EmailRelayAPI.Services;
 using EmailRelayAPI.Services.Transports;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
@@ -37,7 +38,10 @@ builder.Services.Configure<SecurityOptions>(configuration.GetSection(SecurityOpt
 builder.Services.Configure<AnomalyOptions>(configuration.GetSection(AnomalyOptions.SectionName));
 builder.Services.Configure<DeliveryOptions>(configuration.GetSection(DeliveryOptions.SectionName));
 builder.Services.Configure<RetentionOptions>(configuration.GetSection(RetentionOptions.SectionName));
-builder.Services.Configure<AuthenApiOptions>(configuration.GetSection(AuthenApiOptions.SectionName));
+builder.Services.AddOptions<AuthenApiOptions>()
+    .Bind(configuration.GetSection(AuthenApiOptions.SectionName))
+    .Validate(o => o.Validate() == null, "Invalid AuthenApi configuration (see the startup log)")
+    .ValidateOnStart();
 builder.Services.Configure<AuditOptions>(configuration.GetSection(AuditOptions.SectionName));
 builder.Services.Configure<AlertOptions>(configuration.GetSection(AlertOptions.SectionName));
 builder.Services.Configure<ApiKeyOptions>(configuration.GetSection(ApiKeyOptions.SectionName));
@@ -60,7 +64,16 @@ builder.Services.AddDataProtection()
 builder.Services.AddHttpClient(HttpApiEmailTransport.HttpClientName);
 builder.Services.AddHttpClient(WebhookNotifier.HttpClientName);
 builder.Services.AddHttpClient(AlertService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
-builder.Services.AddHttpClient(AuthenApiClient.HttpClientName);
+// AuthenAPI: no redirects (a 301/302 turns POST into GET), a connect timeout so "unreachable" is detected early,
+// and no retry handler of any kind (each retry would count as another bad password in AD).
+builder.Services.AddHttpClient(AuthenApiClient.HttpClientName)
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        ConnectTimeout = TimeSpan.FromSeconds(Math.Max(1, authenOptions.ConnectTimeoutSeconds)),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+    });
 
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = securityOptions.MaxRequestBodyBytes);
 builder.Services.Configure<IISServerOptions>(o => o.MaxRequestBodySize = securityOptions.MaxRequestBodyBytes);
@@ -116,6 +129,8 @@ builder.Services.AddSingleton<KeyRotationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<KeyRotationService>());
 
 builder.Services.AddSingleton<IAuthenApiClient, AuthenApiClient>();
+builder.Services.AddSingleton<AuthenCircuitBreaker>();
+builder.Services.AddSingleton<IDirectAdAuthenticator, DirectAdAuthenticator>();
 builder.Services.AddSingleton<IAdminAuthService, AdminAuthService>();
 builder.Services.AddScoped<IStatsService, StatsService>();
 
@@ -135,10 +150,26 @@ builder.Services.AddAuthentication(options =>
         o.Cookie.SameSite = SameSiteMode.Strict;
         o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         o.Cookie.Path = "/";
-        o.ExpireTimeSpan = TimeSpan.FromMinutes(Math.Max(5, authenOptions.SessionTimeoutMinutes));
+        o.ExpireTimeSpan = TimeSpan.FromMinutes(Math.Max(5, authenOptions.IdleTimeoutMinutes));
         o.SlidingExpiration = true;
         o.Events = new CookieAuthenticationEvents
         {
+            // Absolute session lifetime (degraded sessions are short) and immediate effect of disabling a user.
+            OnValidatePrincipal = async ctx =>
+            {
+                var principal = ctx.Principal;
+                if (principal?.FindFirst(RelayClaims.AuthType)?.Value != "admin") return;
+                var expired = !long.TryParse(principal.FindFirst(RelayClaims.SessionExpires)?.Value, out var exp)
+                              || DateTimeOffset.UtcNow.ToUnixTimeSeconds() > exp;
+                var active = !expired && principal.FindFirst(RelayClaims.LoginMode)?.Value == AdminAuthService.ModeLocal
+                    || !expired && await ctx.HttpContext.RequestServices.GetRequiredService<IAdminAuthService>()
+                        .IsUserActiveAsync(principal.Identity?.Name ?? string.Empty, ctx.HttpContext.RequestAborted);
+                if (!active)
+                {
+                    ctx.RejectPrincipal();
+                    await ctx.HttpContext.SignOutAsync(RelayClaims.AdminCookieScheme);
+                }
+            },
             OnRedirectToLogin = ctx =>
             {
                 if (ctx.Request.Path.StartsWithSegments("/api"))
@@ -237,6 +268,20 @@ var app = builder.Build();
 await DbInitializer.InitializeAsync(app.Services);
 
 var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+var authenError = authenOptions.Validate();
+if (authenError != null)
+{
+    startupLogger.LogCritical("{Error}", authenError);
+}
+if (!string.IsNullOrWhiteSpace(authenOptions.BaseUrl) && authenOptions.NormalizedBaseUrl.TrimEnd('/') != authenOptions.BaseUrl.Trim().TrimEnd('/'))
+{
+    startupLogger.LogWarning("AuthenApi:BaseUrl '{Configured}' has a path; using '{Used}' + AuthenApi:AuthenticatePath '{Path}'. Remove the path from the setting.",
+        authenOptions.BaseUrl, authenOptions.NormalizedBaseUrl, authenOptions.AuthenticatePath);
+}
+if (authenOptions.OfflineWindowHours > 0 && !authenOptions.OfflineCacheEnabled)
+{
+    startupLogger.LogWarning("AuthenApi:OfflineCachePepper is missing or shorter than 32 characters - the offline login cache is disabled.");
+}
 if (string.IsNullOrWhiteSpace(authenOptions.BaseUrl) && !authenOptions.LocalAdmin.Enabled)
 {
     startupLogger.LogWarning("Neither AuthenApi:BaseUrl nor AuthenApi:LocalAdmin is configured - nobody can sign in to the admin console.");

@@ -94,20 +94,42 @@ Schema ถูกสร้างด้วย `EnsureCreated()` ตอน start (�
 | Console | cookie `HttpOnly` + `SameSite=Strict`, `X-Requested-With` guard (CSRF), role Admin/Viewer, login rate limit, lockout, AuthenAPI + PBKDF2 cache |
 | Data | secrets เข้ารหัส (Data Protection key ring ที่ `DataProtection:KeyPath`), key แสดงครั้งเดียว, log ไม่เก็บ secret, CSV export ป้องกัน formula injection |
 
-## 5. Login ผู้ดูแลแบบ Hybrid (ตาม AuthenAPI CLIENT_INTEGRATION_GUIDE)
+## 5. Login ผู้ดูแลผ่าน AuthenAPI (ตามคู่มือเชื่อมต่อ AuthenAPI ฉบับปัจจุบัน)
+
+หลักการ: **ถาม AuthenAPI ทุกครั้งที่ login** ส่วน cache ใช้ได้เฉพาะตอน "ติดต่อ AuthenAPI ไม่ได้" เท่านั้น ไม่ใช่ทางลัดให้ login เร็วขึ้น
 
 ```
-username/password → AdminUsers cache?
-   ├─ มี + ยังไม่หมดอายุ + hash ตรง ──────────────► OK (mode=cache)      ไม่แตะ AD
-   ├─ ไม่มี / หมดอายุ / รหัสเปลี่ยน ─► AuthenAPI POST /ldap/authenticate
-   │       ├─ 200 → map groups → role, อัปเดต cache (salt+hash ใหม่, expires = +CacheDurationDays) ─► OK (mode=authenapi)
-   │       ├─ 401 → นับ failed attempt → lockout เมื่อครบ MaxFailedAttempts
-   │       └─ ล่ม/ไม่ได้ตั้งค่า → ถ้า AllowOfflineLogin และ cache ตรง ─► OK (mode=offline-cache, audit Warning)
-   └─ LocalAdmin (break-glass) ตรวจกับ PBKDF2 hash ใน appsettings
+username + password ─► ตรวจรูปแบบชื่อ + จำกัดการลองผิด (5 ครั้ง/15 นาที ต่อ username และต่อ IP)
+   │
+   ├─ ชื่อตรงกับ LocalAdmin (break-glass) ─► ตรวจกับ PBKDF2 ใน config (ไม่ส่งไป AuthenAPI)
+   │
+   ▼
+ 1) AuthenAPI  POST {BaseUrl}/api/ldap/authenticate  (ส่งชื่อตามที่พิมพ์, รหัสจริง, https, ไม่ follow redirect, timeout 45 วิ, ไม่ retry)
+   ├─ 200 JSON success ─────────────► ✅ เข้าระบบ + บันทึก profile, alias และ offline credential (เฉพาะ Viewer)
+   ├─ 401 JSON / 400 ───────────────► ❌ "Invalid username or password" + ลบ offline credential ของคนนี้
+   ├─ 429 ──────────────────────────► ⏳ "ลองใหม่ภายหลัง"
+   ├─ 401(reason)/403/404/405/3xx/401 HTML ► ⚙️ "ติดต่อผู้ดูแลระบบ" + alert + System log
+   ├─ timeout / 500 / 504 / ขาดระหว่างรับ ► ⚠️ "ระบบขัดข้องชั่วคราว" (ห้าม fallback)
+   └─ เชื่อมต่อไม่ได้ (refused/DNS/TLS), 502, 503 HTML, 503 JSON (AD ล่ม), circuit breaker เปิด
+        ▼
+ 2) LDAPS bind ตรงกับ DC 1 ครั้ง ด้วย UPN จาก cache (ถ้าเปิด DirectAd) ─ สำเร็จ ► ✅ degraded / 49 ► ❌ + ลบ cache / อื่น ๆ ► ขั้น 3
+        ▼
+ 3) Offline cache (อายุ ≤ OfflineWindowHours, จองสิทธิ์ลองแบบ atomic ≤ 5 ครั้ง/คน, ≤ 20 ครั้ง/นาทีรวม) ─ ตรง ► ✅ degraded / ไม่ตรง ► ❌
+        ▼
+   ⚠️ "The authentication service is temporarily unavailable"
 ```
 
-- `AuthenApi:AdminGroups` / `ViewerGroups` = ชื่อ AD group (รองรับทั้ง `CN=...` และชื่อสั้น); ว่าง = ทุกคนที่ผ่าน AuthenAPI เป็น Admin (มีคำเตือนตอน start)
-- console แสดงผู้ใช้ที่ cache ไว้, สั่ง *Clear cache* (บังคับตรวจกับ AD ครั้งถัดไป), disable/enable
+| เรื่อง | การทำงาน |
+|---|---|
+| userKey | `userPrincipalName` ตัวพิมพ์เล็ก ถ้าว่างใช้ `samAccountName` ถ้าว่างทั้งคู่ปฏิเสธ (ตรวจด้วย `IsNullOrWhiteSpace`) ชื่อที่ผู้ใช้พิมพ์ทุกแบบเก็บเป็น alias ชี้ไปที่ userKey เดียว |
+| Offline credential | HMAC-SHA256(pepper) แล้ว PBKDF2-SHA256 600,000 รอบ salt สุ่มรายคน; pepper อยู่ใน config (`AuthenApi:OfflineCachePepper`) ไม่อยู่ใน DB; ไม่มี pepper = ปิด offline; hash แบบเก่า (v1) ถูกลบตอน start |
+| Admin | บัญชีที่เป็น Admin **ไม่ถูก cache offline** ใช้ได้เฉพาะ login ออนไลน์ (หรือ LocalAdmin ตอนฉุกเฉิน) |
+| Degraded session | login จากขั้น 2–3 ได้สิทธิ์ Viewer (อ่านอย่างเดียว) อายุ `DegradedSessionMinutes` (60 นาที) มีแถบเตือนใน console และ audit `AdminLoginDegraded` |
+| Session ปกติ | อายุสูงสุด `SessionTimeoutMinutes` (8 ชม.) idle `IdleTimeoutMinutes` (60 นาที); ถ้าผู้ดูแลกด Disable ผู้ใช้ session จะหมดภายใน 1 นาที |
+| Circuit breaker | ติดต่อไม่ได้ 3 ครั้งติด → ข้ามไป fallback 30 วินาที → ปล่อย 1 request ลอง; ไม่นับ 401/timeout/500 |
+| Group → role | `AdminGroups` / `ViewerGroups` (direct member); ไม่อยู่ในกลุ่มใดเลย → ปฏิเสธ; ถ้า `AdminGroups` ว่าง ทุกคนเป็น Admin (มีคำเตือนตอน start) |
+| ตั้งค่าผิด | `BaseUrl` ที่เป็น http หรือมี path อื่นนอกจาก `/api` → แอปไม่ยอม start (`/api` เดิมจะถูกตัดออกพร้อมคำเตือน) |
+| ทดสอบ | `EmailRelayAPI.Tests` ครอบคลุมตารางตัดสินใจ หัวข้อ 4 และกรณีทดสอบ 1–10 หัวข้อ 10 ของคู่มือ (`dotnet test`) |
 
 ## 6. Caching ในระบบ
 
@@ -117,7 +139,7 @@ username/password → AdminUsers cache?
 | Block list | memory mirror ของ `BlockEntries` | refresh ทุก 60s + ทันทีเมื่อ block/unblock |
 | Rate limit / anomaly counters | `SlidingCounterStore` (memory) | ตาม window, เคลียร์อัตโนมัติ |
 | Daily quota | memory counter seed จาก DB | ต่อวัน (UTC) |
-| Admin credentials | `AdminUsers` (DB) | `AuthenApi:CacheDurationDays` (90 วัน) |
+| Offline credential ผู้ดูแล (เฉพาะ Viewer) | `AdminUsers` (DB) + pepper ใน config | `AuthenApi:OfflineWindowHours` (24 ชม.) นับจาก login ออนไลน์ครั้งล่าสุด ใช้เฉพาะตอน AuthenAPI ติดต่อไม่ได้ |
 | Microsoft Graph token | memory ต่อ profile | ตาม `expires_in` |
 | Seen IPs ต่อ client | memory set โหลดจาก DB | ตลอด process |
 
@@ -150,10 +172,17 @@ username/password → AdminUsers cache?
 11. **Tests** – unit tests (validation, rate limiter, anomaly thresholds, template renderer, signature) และ integration tests ด้วย `WebApplicationFactory` + smtp4dev/MailHog
 12. **EF migrations + seed script** สำหรับ production upgrade path และ backup/restore runbook (SQLite → SQL Server)
 
-## 9. ข้อจำกัดของการส่งมอบรอบนี้
+## 9. สิ่งที่ตรวจสอบแล้ว และสิ่งที่ยังต้องทดสอบในระบบจริง
 
-โค้ดเขียนครบทั้งระบบในสภาพแวดล้อมที่ **ไม่มี .NET SDK และเข้าถึง NuGet ไม่ได้** จึงยังไม่ได้ build/run จริง ได้ผ่านการ review แบบ "เป็น compiler" สองรอบแล้ว แต่ควร:
+ตรวจแล้ว:
 
-1. `dotnet build` และแก้ warning/error ที่อาจเหลือ (จุดที่ต้องจับตา: การแปล LINQ `GroupBy` ใน `Services/StatsService.cs` บน provider ที่ใช้, MailKit API ใน `Services/Transports/SmtpEmailTransport.cs`)
-2. รันทดสอบกับ SMTP ทดสอบ (เช่น smtp4dev) และ provider จริง
-3. ทดสอบ login กับ AuthenAPI จริง (`GET /api/admin/auth/authen-status` จาก console → หน้า Security)
+1. `dotnet build` ผ่านโดยไม่มี error และ `dotnet test` ผ่านทั้งหมด (ตารางตัดสินใจของ AuthenAPI, กรณีทดสอบ 1–10, circuit breaker, offline hash)
+2. รันแอปจริงกับ SQLite: login console, สร้าง/แก้ไข client และ profile, สร้าง API key, System log
+3. Login กับ AuthenAPI จำลองผ่าน https: ส่งชื่อตามที่พิมพ์, API key และ User-Agent, ไม่ follow redirect, timeout, connection refused → offline แบบ degraded, circuit breaker, BaseUrl ที่เป็น http ทำให้แอปไม่ start
+4. อัปเกรดฐานข้อมูลที่สร้างจากเวอร์ชันแรก: เพิ่มตารางและคอลัมน์ที่ขาด และลบ hash รหัสผ่านแบบเก่า
+
+ยังต้องทดสอบในระบบจริง:
+
+1. SQL Server (การสร้างตารางและการอัปเกรด schema)
+2. AuthenAPI และ Active Directory จริง ตามหัวข้อ 10 ของคู่มือ AuthenAPI รวมถึง LDAPS fallback (`DirectAd`) ซึ่งทดสอบแค่ด้วย test double
+3. IIS (โมดูล WebDAV, request filtering) และการส่งอีเมลผ่าน SMTP/API ของผู้ให้บริการจริง

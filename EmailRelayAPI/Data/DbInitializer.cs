@@ -35,7 +35,17 @@ public static class DbInitializer
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbInitializer");
         var dbOptions = scope.ServiceProvider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
 
-        await ctx.Database.EnsureCreatedAsync(ct);
+        var created = await ctx.Database.EnsureCreatedAsync(ct);
+        if (!created)
+        {
+            // EnsureCreated never changes an existing database: add tables and columns introduced by newer versions.
+            await SchemaUpgrader.UpgradeAsync(ctx, logger, ct);
+        }
+
+        // Offline credentials from the previous cache format (v1, no pepper) must not be used any more.
+        var legacy = await ctx.AdminUsers.Where(u => u.PasswordHash != "" && !u.PasswordHash.StartsWith("v2$"))
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PasswordHash, "").SetProperty(u => u.OfflineFailures, 0), ct);
+        if (legacy > 0) logger.LogWarning("Removed {Count} legacy cached admin credentials (old hash format)", legacy);
 
         if (!dbOptions.Provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
         {

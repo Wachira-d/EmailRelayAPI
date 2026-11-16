@@ -48,8 +48,9 @@
 
 - Cookie `EmailRelay.Admin`: `HttpOnly`, `SameSite=Strict`, sliding expiration (`AuthenApi:SessionTimeoutMinutes`)
 - CSRF: request ที่ไม่ใช่ GET ต้องมี `X-Requested-With: XMLHttpRequest` (`RequireAjaxHeaderAttribute`)
-- Login rate limit 10 ครั้ง/นาที/IP; lockout ต่อบัญชี; ทุกความพยายาม login ถูก audit
-- Role: `Admin` (แก้ไขได้) / `Viewer` (อ่านอย่างเดียว) map จาก AD group
+- Login: ถาม AuthenAPI ทุกครั้ง (ดู ARCHITECTURE.md ข้อ 5) · จำกัด login ผิด 5 ครั้ง/15 นาที ต่อ username และต่อ IP · request ไปที่ endpoint login ไม่เกิน 10 ครั้ง/นาที/IP · ทุกความพยายาม login ถูก audit พร้อมผลจาก AuthenAPI (ไม่บันทึกรหัสผ่าน)
+- Role: `Admin` (แก้ไขได้) / `Viewer` (อ่านอย่างเดียว) map จาก AD group; session ที่ได้จาก fallback เป็น Viewer เสมอและหมดอายุใน 60 นาที
+- Session มีอายุสูงสุด 8 ชม.; Disable ผู้ใช้แล้ว session เดิมใช้ไม่ได้ภายใน 1 นาที และ offline credential ถูกลบ
 - CSP `script-src 'self'` – console ไม่ใช้ inline script; HTML ของข้อความแสดงใน iframe `sandbox=""`
 - CSV export escape ค่าที่ขึ้นต้นด้วย `= + - @` (formula injection)
 
@@ -59,14 +60,16 @@
 |---|---|
 | API key | SHA-256 เท่านั้น |
 | SMTP password, provider API key, OAuth secret, signing secret, webhook secret | เข้ารหัสด้วย ASP.NET Data Protection (key ring ที่ `DataProtection:KeyPath`; **สำรองโฟลเดอร์นี้** ไม่เช่นนั้นถอดรหัสไม่ได้หลังย้ายเครื่อง) |
-| รหัสผ่านผู้ดูแล (cache) | PBKDF2-SHA256 100,000 รอบ + salt 16 ไบต์ ต่อผู้ใช้ |
+| รหัสผ่านผู้ดูแล (offline credential, เฉพาะ Viewer) | HMAC-SHA256 ด้วย pepper นอก DB แล้ว PBKDF2-SHA256 600,000 รอบ + salt 16 ไบต์ ต่อผู้ใช้; ใช้ได้ ≤ 24 ชม. หลัง login ออนไลน์ และเฉพาะตอน AuthenAPI ติดต่อไม่ได้ |
 | Local admin | `pbkdf2$iterations$salt$hash` ใน appsettings (สร้างด้วย `dotnet run -- hash-password`) |
 | เนื้อหาอีเมล/ไฟล์แนบ | DB/ดิสก์ ตามอายุ `Retention:MessageRetentionDays` แล้ว purge |
 
 ## 6. Checklist ก่อนขึ้น production
 
 - [ ] `Security:RequireHttps=true` และใบรับรองถูกต้อง; ตั้ง `KnownProxies` ถ้ามี reverse proxy/LB
-- [ ] ตั้ง `AuthenApi:BaseUrl/ApiKey` และ `AdminGroups` (อย่าปล่อยว่าง) · ปิด `LocalAdmin` หรือตั้งรหัสที่แข็งแรงและเก็บไว้เป็น break-glass
+- [ ] ตั้ง `AuthenApi:BaseUrl` เป็น https ไม่มี path (เช่น `https://authen.hondacx.me`), `ApiKey` เฉพาะของระบบนี้, `AdminGroups` และ `ViewerGroups` (อย่าปล่อยว่าง) · ปิด `LocalAdmin` หรือตั้งรหัสที่แข็งแรงและเก็บไว้เป็น break-glass
+- [ ] ตั้ง `AuthenApi:OfflineCachePepper` (สุ่ม ≥ 32 ตัวอักษร เก็บนอก DB เช่น environment variable `AuthenApi__OfflineCachePepper`) หรือตั้ง `OfflineWindowHours: 0` ถ้าไม่ต้องการ login ตอน AuthenAPI ล่ม
+- [ ] ส่ง IP ขาออกของเซิร์ฟเวอร์ให้ผู้ดูแล AuthenAPI ขอ scope `authenticate` และทดสอบตามหัวข้อ 10 ของคู่มือ AuthenAPI
 - [ ] เปิด `Security:EnableIpAllowList` เมื่อ client ทั้งหมดอยู่ในเครือข่ายที่รู้จัก; ตั้ง `AllowedIpRanges` ต่อ client
 - [ ] ตั้ง `Alerts` (admin emails + sender profile สำหรับแจ้งเตือน หรือ webhook)
 - [ ] สำรอง `data/keys` (Data Protection) และฐานข้อมูล; จำกัดสิทธิ์โฟลเดอร์ `data/`, `logs/` ให้เฉพาะ service account

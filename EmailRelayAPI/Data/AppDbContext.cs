@@ -18,6 +18,7 @@ public class AppDbContext : DbContext
     public DbSet<BlockEntry> BlockEntries => Set<BlockEntry>();
     public DbSet<ClientSeenIp> ClientSeenIps => Set<ClientSeenIp>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
+    public DbSet<AdminUserAlias> AdminUserAliases => Set<AdminUserAlias>();
     public DbSet<EmailTemplate> Templates => Set<EmailTemplate>();
     public DbSet<SystemLog> SystemLogs => Set<SystemLog>();
 
@@ -113,6 +114,18 @@ public class AppDbContext : DbContext
         b.Entity<AdminUser>(e =>
         {
             e.HasIndex(x => x.Username).IsUnique();
+            e.Property(x => x.OfflineFailures).HasDefaultValue(0);
+            e.Ignore(x => x.HasOfflineCredential);
+        });
+
+        b.Entity<AdminUserAlias>(e =>
+        {
+            e.HasKey(x => x.LoginName);
+            e.HasIndex(x => x.AdminUserId);
+            e.HasOne(x => x.AdminUser)
+             .WithMany(u => u.Aliases)
+             .HasForeignKey(x => x.AdminUserId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<EmailTemplate>(e =>

@@ -16,6 +16,10 @@ public static class RelayClaims
     public const string Scope = "relay:scope";
     public const string AuthType = "relay:auth_type";
     public const string DisplayName = "relay:display_name";
+    public const string LoginMode = "relay:login_mode";
+    public const string Degraded = "relay:degraded";
+    public const string AuthTime = "relay:auth_time";
+    public const string SessionExpires = "relay:session_expires";
 
     public const string ItemClientContext = "RelayClientContext";
 

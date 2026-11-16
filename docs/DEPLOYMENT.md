@@ -30,7 +30,7 @@ dotnet publish -c Release -o ../publish
 | `Retention` | `MessageRetentionDays` (90), `AuditRetentionDays` (365), `RequestLogRetentionDays` (30), `SystemLogRetentionDays` (30), `PurgeTime` | purge อัตโนมัติ (เวลาเครื่อง) |
 | `Audit` | `EnableFileLogging`, `LogDirectory`, `EnableRequestLogging`, `SystemLogMinimumLevel` (Warning), `SystemLogIncludeAppInfo` | ไฟล์ `logs/audit-yyyyMMdd.jsonl`; system log ของแอปเก็บลงตาราง `SystemLogs` ดูได้ที่ Logs → System log |
 | `Alerts` | `Enabled`, `AdminEmails[]`, `SenderProfileName`, `WebhookUrl`, `ThrottleMinutes` | ใช้ sender profile ที่มีอยู่ส่งอีเมลแจ้งเตือน |
-| `AuthenApi` | `BaseUrl` (เช่น `https://authen.company.local/api`), `ApiKey`, `CacheDurationDays`, `AllowOfflineLogin`, `AdminGroups[]`, `ViewerGroups[]`, `MaxFailedAttempts`, `LockoutMinutes`, `SessionTimeoutMinutes`, `LocalAdmin` | login console |
+| `AuthenApi` | `BaseUrl` (https ไม่มี path เช่น `https://authen.hondacx.me`), `ApiKey`, `TimeoutSeconds` (45), `AdminGroups[]`, `ViewerGroups[]`, `MaxFailedAttempts`/`FailedAttemptWindowMinutes` (5/15), `SessionTimeoutMinutes` (480), `IdleTimeoutMinutes` (60), `DegradedSessionMinutes` (60), `CircuitFailureThreshold`/`CircuitOpenSeconds` (3/30), `OfflineWindowHours` (24, 0 = ปิด), `OfflineCachePepper`, `OfflineMaxFailuresPerUser`/`PerMinute` (5/20), `DirectAd` (`Enabled`, `Server` FQDN ของ DC, `Port` 636), `LocalAdmin` | login console ตามคู่มือ AuthenAPI (ดู ARCHITECTURE.md ข้อ 5); http หรือมี path → แอปไม่ start |
 | `Logging` | ระดับ log ของ .NET | |
 
 ### ตัวอย่าง `appsettings.Production.json`
@@ -40,8 +40,9 @@ dotnet publish -c Release -o ../publish
   "Database": { "Provider": "SqlServer", "ConnectionString": "Server=sql01;Database=EmailRelay;Trusted_Connection=True;TrustServerCertificate=True" },
   "Security": { "RequireHttps": true, "EnableIpAllowList": true, "AllowedIpAddresses": [ "10.0.0.0/8" ], "KnownProxies": [ "10.1.1.10" ] },
   "AuthenApi": {
-    "BaseUrl": "https://authen.company.local/api",
-    "ApiKey": "<AuthenAPI key>",
+    "BaseUrl": "https://authen.hondacx.me",
+    "ApiKey": "<AuthenAPI key ของระบบนี้>",
+    "OfflineCachePepper": "<สุ่ม 32+ ตัวอักษร หรือใส่ผ่าน environment variable AuthenApi__OfflineCachePepper>",
     "AdminGroups": [ "IT-EmailRelay-Admins" ],
     "ViewerGroups": [ "IT-Helpdesk" ],
     "LocalAdmin": { "Enabled": false }

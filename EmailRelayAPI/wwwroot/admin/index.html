@@ -6,7 +6,7 @@
   <title>Email Relay Console</title>
   <link rel="icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
-  <link rel="stylesheet" href="admin.css?v=4" />
+  <link rel="stylesheet" href="admin.css?v=5" />
 </head>
 <body>
 
@@ -32,7 +32,7 @@
         <div id="login-error" class="alert alert-danger py-2 small d-none" role="alert"></div>
         <button class="btn btn-primary btn-lg w-100" type="submit" id="login-submit">Sign in</button>
       </form>
-      <p class="login-note">Sign in with your directory account. Credentials are verified through AuthenAPI (Active Directory) and cached locally so repeat logins work even when the directory is unavailable.</p>
+      <p class="login-note">Sign in with your directory account (user@domain, DOMAIN&#92;user or your user name). Every sign-in is verified by AuthenAPI against Active Directory. If that service is unreachable, a short read-only session may be granted from a recent successful sign-in.</p>
     </div>
   </div>
 
@@ -78,6 +78,7 @@
         <h1 class="page-title" id="page-title">Dashboard</h1>
         <div class="page-actions" id="page-actions"></div>
       </header>
+      <div class="alert alert-warning rounded-0 mb-0 py-2 small d-none" id="degraded-banner" role="status"></div>
       <div class="content" id="content">
         <div class="loading">Loading…</div>
       </div>
@@ -89,8 +90,8 @@
 
   <script src="/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
   <script src="/lib/chartjs/chart.umd.js"></script>
-  <script src="app.js?v=4"></script>
-  <script src="views.js?v=4"></script>
-  <script src="views2.js?v=3"></script>
+  <script src="app.js?v=6"></script>
+  <script src="views.js?v=6"></script>
+  <script src="views2.js?v=6"></script>
 </body>
 </html>

@@ -104,6 +104,7 @@ public class EmailsController : ControllerBase
     /// <param name="search">Matches subject or recipient</param>
     /// <param name="page">1-based page</param>
     /// <param name="pageSize">1..100</param>
+    /// <param name="ct">Cancellation token</param>
     [HttpGet]
     [Authorize(Policy = RelayClaims.PolicyRead)]
     [ProducesResponseType(typeof(ApiResponse<PagedResult<EmailSummaryDto>>), StatusCodes.Status200OK)]

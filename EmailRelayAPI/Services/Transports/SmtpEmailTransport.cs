@@ -101,7 +101,7 @@ public class SmtpEmailTransport : IEmailTransport
             _ => SecureSocketOptions.Auto
         };
 
-        await client.ConnectAsync(profile.SmtpHost, profile.SmtpPort, security, ct);
+        await client.ConnectAsync(profile.SmtpHost!, profile.SmtpPort, security, ct);
 
         if (!string.IsNullOrWhiteSpace(profile.SmtpUsername))
         {

@@ -22,7 +22,7 @@
 | **Key rotation** | ปิดเป็นค่าเริ่มต้น (key ไม่หมดอายุ) · client ที่ต้องการเปิด rotation ได้ (ทุก N วัน + grace period) · rotate ได้เองผ่าน `POST /api/v1/me/keys/rotate` หรือจาก console โดย key เก่ายังใช้ได้ช่วง grace |
 | **ตรวจจับการใช้งานผิดปกติ** | ยิงซ้ำ (burst), auth ล้มเหลวซ้ำ (brute force), ส่งข้อความเดิมซ้ำ ๆ (duplicate storm), ผู้รับพุ่งผิดปกติ, อัตรา 4xx สูง, IP ใหม่ที่ไม่เคยเห็น → บันทึกเหตุการณ์ + บล็อกอัตโนมัติ + แจ้งเตือน (email/webhook) |
 | **Log & รายงาน** | Request log ทุก call, Audit trail (auth/security/admin/delivery/system), ไฟล์ JSONL รายวัน, dashboard (กราฟรายชั่วโมง/รายวัน, top clients, profile health), รายงานการใช้งานตามช่วงเวลา/ต่อ client/ต่อ profile, export CSV, retention/purge อัตโนมัติ |
-| **Login ผู้ดูแล** | AuthenAPI (AD/LDAPS) + local credential cache (PBKDF2) ทำให้ login ซ้ำไม่ต้องไป AD และยัง login ได้เมื่อ AD ล่ม, lockout, map AD group → role Admin/Viewer, break-glass local admin |
+| **Login ผู้ดูแล** | ตามคู่มือ AuthenAPI ฉบับปัจจุบัน: ถาม AuthenAPI ทุกครั้ง, fallback (LDAPS ตรง → offline cache ≤ 24 ชม.) เฉพาะตอนติดต่อไม่ได้, circuit breaker, session แบบ degraded อ่านอย่างเดียว, map AD group → Admin/Viewer, break-glass local admin |
 
 ---
 
@@ -71,6 +71,14 @@ EmailRelayAPI/
 docs/                         # สถาปัตยกรรม, คู่มือ API, ความปลอดภัย, การติดตั้ง
 ```
 
+## ทดสอบ
+
+```bash
+dotnet test
+```
+
+ชุดทดสอบ `EmailRelayAPI.Tests` ครอบคลุมการ login ตามตารางตัดสินใจและกรณีทดสอบก่อนขึ้น production ของคู่มือ AuthenAPI
+
 ## สถานะ
 
-โค้ดชุดนี้ถูกออกแบบและเขียนครบทั้งระบบ แต่ยังไม่ได้ build/run ในสภาพแวดล้อมที่สร้างโค้ด (ไม่มี .NET SDK และเข้าถึง NuGet ไม่ได้) — โปรด `dotnet build` ครั้งแรกบนเครื่องของคุณและแจ้ง error ที่พบ (ถ้ามี) เพื่อแก้ไข รายละเอียดอยู่ท้าย `docs/ARCHITECTURE.md`
+Build ด้วย .NET 8 SDK ผ่านโดยไม่มี error และชุดทดสอบผ่านทั้งหมด ได้รันแอปจริงกับ SQLite ทดสอบ login กับ AuthenAPI จำลองผ่าน https และทดสอบการอัปเกรดฐานข้อมูลจากเวอร์ชันแรก ส่วนที่ยังไม่ได้ทดสอบกับระบบจริง: SQL Server, AuthenAPI และ Active Directory จริง, IIS และการส่งผ่าน SMTP/API ของผู้ให้บริการจริง

@@ -20,6 +20,8 @@ public class AdminSessionInfo
     public string? DisplayName { get; set; }
     public string Role { get; set; } = string.Empty;
     public string Mode { get; set; } = string.Empty;
+    public bool Degraded { get; set; }
+    public DateTime? ExpiresAt { get; set; }
     public DateTime? LastLogin { get; set; }
     public string? Email { get; set; }
     public string? Department { get; set; }
@@ -29,6 +31,8 @@ public class AdminUserDto
 {
     public int Id { get; set; }
     public string Username { get; set; } = string.Empty;
+    public string? UserPrincipalName { get; set; }
+    public string? SamAccountName { get; set; }
     public string? DisplayName { get; set; }
     public string? Email { get; set; }
     public string? Department { get; set; }
@@ -37,10 +41,12 @@ public class AdminUserDto
     public bool IsEnabled { get; set; }
     public DateTime? LastLogin { get; set; }
     public string? LastLoginIp { get; set; }
-    public DateTime LastAdSync { get; set; }
-    public DateTime CacheExpires { get; set; }
-    public DateTime? LockedUntil { get; set; }
+    public string? LastLoginMode { get; set; }
+    public DateTime LastOnlineVerified { get; set; }
+    public bool HasOfflineCredential { get; set; }
+    public int OfflineFailures { get; set; }
     public List<string> Groups { get; set; } = new();
+    public List<string> LoginNames { get; set; } = new();
 }
 
 // ---------------- clients & keys ----------------

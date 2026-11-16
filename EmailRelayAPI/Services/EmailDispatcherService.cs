@@ -94,6 +94,7 @@ public class EmailDispatcherService : BackgroundService
         var stuckCutoff = now.AddMinutes(-Math.Max(1, _options.CurrentValue.StuckSendingMinutes));
         var stuck = await db.Messages
             .Where(m => m.Status == EmailStatus.Sending && (m.NextAttemptAt == null || m.NextAttemptAt < stuckCutoff))
+            .OrderBy(m => m.NextAttemptAt)
             .Take(200)
             .ToListAsync(ct);
         foreach (var m in stuck)

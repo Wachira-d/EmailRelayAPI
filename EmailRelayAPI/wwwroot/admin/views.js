@@ -12,7 +12,7 @@ Routes.dashboard = async function (params, query, content) {
 async function renderDashboard(content, silent) {
   const r = await apiGet('/api/admin/dashboard');
   const d = r.data;
-  $('#brand-version').textContent = 'v' + d.version;
+  $('#brand-version').textContent = 'v' + String(d.version).split('+')[0];
   const unhealthy = d.profiles.filter(p => p.isActive && !p.healthy);
   content.innerHTML = `
     <div class="kpi-grid">

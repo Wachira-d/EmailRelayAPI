@@ -237,6 +237,8 @@ public static class Mappers
     {
         Id = u.Id,
         Username = u.Username,
+        UserPrincipalName = u.UserPrincipalName,
+        SamAccountName = u.SamAccountName,
         DisplayName = u.DisplayName,
         Email = u.Email,
         Department = u.Department,
@@ -245,10 +247,12 @@ public static class Mappers
         IsEnabled = u.IsEnabled,
         LastLogin = u.LastLogin,
         LastLoginIp = u.LastLoginIp,
-        LastAdSync = u.LastAdSync,
-        CacheExpires = u.CacheExpires,
-        LockedUntil = u.LockedUntil,
-        Groups = TryParseList(u.GroupsJson)
+        LastLoginMode = u.LastLoginMode,
+        LastOnlineVerified = u.LastAdSync,
+        HasOfflineCredential = u.HasOfflineCredential,
+        OfflineFailures = u.OfflineFailures,
+        Groups = TryParseList(u.GroupsJson),
+        LoginNames = u.Aliases.Select(a => a.LoginName).OrderBy(a => a).ToList()
     };
 
     private static List<string> TryParseList(string? json)

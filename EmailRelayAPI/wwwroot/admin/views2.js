@@ -255,13 +255,19 @@ Routes.security = async function (params, query, content) {
         ${App.isAdmin ? `<div class="card mb-3"><div class="card-header">Authentication backend</div><div class="card-body">
           ${authen && authen.data ? `<dl class="kv"><dt>AuthenAPI</dt><dd>${authen.data.configured ? (authen.data.reachable ? badge('ok', 'reachable') : badge('failed', 'unreachable')) : badge('neutral', 'not configured')}</dd>
             ${authen.data.baseUrl ? `<dt>Base URL</dt><dd class="mono">${esc(authen.data.baseUrl)}</dd>` : ''}
+            <dt>Circuit breaker</dt><dd>${authen.data.circuit === 'closed' ? badge('ok', 'closed') : badge('warning', authen.data.circuit)}</dd>
+            <dt>Direct AD fallback</dt><dd>${authen.data.directAdEnabled ? badge('ok', 'on') + ' <span class="mono">' + esc(authen.data.directAdServer || '') + '</span>' : badge('neutral', 'off')}</dd>
+            <dt>Offline cache</dt><dd>${authen.data.offlineCacheEnabled ? badge('ok', authen.data.offlineWindowHours + ' h window') : badge('neutral', authen.data.offlineWindowHours > 0 && !authen.data.offlinePepperConfigured ? 'off (no pepper)' : 'off')} <span class="text-muted-sm">Viewer accounts only</span></dd>
+            <dt>Sessions</dt><dd>${authen.data.sessionHours} h · degraded ${authen.data.degradedSessionMinutes} min (read-only)</dd>
             <dt>Local admin</dt><dd>${authen.data.localAdminEnabled ? badge('warning', 'enabled') : badge('neutral', 'disabled')}</dd>
-            ${authen.data.cacheDays ? `<dt>Credential cache</dt><dd>${authen.data.cacheDays} days</dd>` : ''}
-            <dt>Result</dt><dd>${esc(authen.message || '')}</dd></dl>` : `<div class="text-danger">${esc(authen ? authen.message : '')}</div>`}
+            <dt>Check</dt><dd class="text-muted-sm">${esc(authen.message || '')}</dd></dl>` : `<div class="text-danger">${esc(authen ? authen.message : '')}</div>`}
         </div></div>
-        <div class="card"><div class="card-header">Console users (cached from AuthenAPI)</div><div class="table-responsive">${usersRes.data.length ? `<table class="table table-sm"><thead><tr><th>User</th><th>Role</th><th>Last login</th><th></th></tr></thead><tbody>
-          ${usersRes.data.map(u => `<tr class="${u.isEnabled ? '' : 'text-muted'}"><td>${esc(u.displayName || u.username)}<div class="text-muted-sm">${esc(u.username)} · ${esc(u.source)}${u.lockedUntil && new Date(u.lockedUntil) > new Date() ? ' · <span class="text-danger">locked</span>' : ''}</div></td><td><span class="pill">${esc(u.role)}</span></td><td class="text-muted-sm nowrap">${u.lastLogin ? `${ago(u.lastLogin)}<br>${esc(u.lastLoginIp || '')}` : '—'}</td>
-            <td class="text-end nowrap"><button class="btn btn-sm btn-outline-secondary" data-user-cache="${esc(u.username)}" title="Force re-verification by AuthenAPI">Clear cache</button> ${u.isEnabled ? `<button class="btn btn-sm btn-outline-danger" data-user-disable="${esc(u.username)}">Disable</button>` : `<button class="btn btn-sm btn-outline-success" data-user-enable="${esc(u.username)}">Enable</button>`}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No console users yet</div>'}</div></div>` : ''}
+        <div class="card"><div class="card-header">Console users</div><div class="table-responsive">${usersRes.data.length ? `<table class="table table-sm"><thead><tr><th>User</th><th>Role</th><th>Last login</th><th>Offline</th><th></th></tr></thead><tbody>
+          ${usersRes.data.map(u => `<tr class="${u.isEnabled ? '' : 'text-muted'}"><td>${esc(u.displayName || u.username)}<div class="text-muted-sm">${esc(u.username)} · ${esc(u.source)}${u.isEnabled ? '' : ' · <span class="text-danger">disabled</span>'}</div>${u.loginNames && u.loginNames.length ? `<div class="text-muted-sm" title="Names this user has typed">${u.loginNames.map(esc).join(', ')}</div>` : ''}</td>
+            <td><span class="pill">${esc(u.role)}</span></td>
+            <td class="text-muted-sm nowrap">${u.lastLogin ? `${ago(u.lastLogin)} · ${esc(u.lastLoginMode || '')}<br>${esc(u.lastLoginIp || '')}` : '—'}</td>
+            <td class="text-muted-sm nowrap">${u.hasOfflineCredential ? `${badge('ok', 'cached')}<br>verified ${ago(u.lastOnlineVerified)}` : '—'}${u.offlineFailures ? `<br><span class="text-danger">${u.offlineFailures} wrong</span>` : ''}</td>
+            <td class="text-end nowrap">${u.hasOfflineCredential ? `<button class="btn btn-sm btn-outline-secondary" data-user-cache="${esc(u.username)}" title="Remove the offline credential (offboarding)">Clear offline</button> ` : ''}${u.isEnabled ? `<button class="btn btn-sm btn-outline-danger" data-user-disable="${esc(u.username)}">Disable</button>` : `<button class="btn btn-sm btn-outline-success" data-user-enable="${esc(u.username)}">Enable</button>`}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No console users yet</div>'}</div></div>` : ''}
       </div>
     </div>`;
 

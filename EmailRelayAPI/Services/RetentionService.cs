@@ -14,9 +14,11 @@ public class RetentionService : BackgroundService
     private readonly IAuditService _audit;
     private readonly IOptionsMonitor<RetentionOptions> _options;
     private readonly ILogger<RetentionService> _logger;
+    private readonly IServiceProvider _services;
 
-    public RetentionService(IServiceScopeFactory scopeFactory, IEmailQueueService messages, IAuditService audit, IOptionsMonitor<RetentionOptions> options, ILogger<RetentionService> logger)
+    public RetentionService(IServiceScopeFactory scopeFactory, IEmailQueueService messages, IAuditService audit, IOptionsMonitor<RetentionOptions> options, ILogger<RetentionService> logger, IServiceProvider services)
     {
+        _services = services;
         _scopeFactory = scopeFactory;
         _messages = messages;
         _audit = audit;
@@ -82,6 +84,8 @@ public class RetentionService : BackgroundService
         var systemCutoff = now.AddDays(-Math.Max(1, opts.SystemLogRetentionDays));
         var systemLogs = await db.SystemLogs.Where(l => l.Timestamp < systemCutoff).ExecuteDeleteAsync(ct);
 
+        var offline = await _services.GetRequiredService<IAdminAuthService>().PurgeExpiredOfflineCredentialsAsync(ct);
+
         var blockCutoff = now.AddDays(-30);
         var blocks = await db.BlockEntries
             .Where(b => (b.RemovedAt != null && b.RemovedAt < blockCutoff) || (!b.IsPermanent && b.ExpiresAt != null && b.ExpiresAt < blockCutoff))
@@ -91,7 +95,7 @@ public class RetentionService : BackgroundService
         {
             Category = AuditCategory.System,
             Action = "RetentionPurge",
-            Details = $"Purged {messages} messages, {audits} audit entries, {requests} request logs, {systemLogs} system log entries, {blocks} old block entries"
+            Details = $"Purged {messages} messages, {audits} audit entries, {requests} request logs, {systemLogs} system log entries, {offline} expired offline credentials, {blocks} old block entries"
         });
         _logger.LogInformation("Retention purge: {Messages} messages, {Audit} audit, {Requests} request logs, {Blocks} blocks", messages, audits, requests, blocks);
         return (messages, audits, requests, blocks);

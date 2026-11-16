@@ -167,7 +167,7 @@ async function api(path, { method = 'GET', body, query, raw } = {}) {
   const init = { method, headers, credentials: 'same-origin' };
   if (body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(body); }
   const res = await fetch(path + qs(query), init);
-  if (res.status === 401) {
+  if (res.status === 401 && !path.endsWith('/auth/login')) {
     showLogin();
     throw new Error('Sign in required');
   }
@@ -316,7 +316,12 @@ function applySession(s) {
   App.isAdmin = s.role === 'Admin';
   document.body.classList.toggle('viewer', !App.isAdmin);
   $('#user-name').textContent = s.displayName || s.username;
-  $('#user-role').textContent = `${s.role} · ${s.mode}`;
+  $('#user-role').textContent = `${s.role} · ${s.mode}${s.degraded ? ' · degraded' : ''}`;
+  const banner = $('#degraded-banner');
+  banner.classList.toggle('d-none', !s.degraded);
+  if (s.degraded) {
+    banner.textContent = `Temporary read-only session: the authentication service was unavailable, so you were verified by the ${s.mode === 'offline' ? 'offline cache' : 'directory fallback'}. This session ends ${s.expiresAt ? 'at ' + fmtDate(s.expiresAt) : 'soon'}; sign in again once the service is back.`;
+  }
   $('#user-avatar').textContent = (s.displayName || s.username || '?').trim().charAt(0).toUpperCase();
 }
 async function initSession() {
